@@ -1,7 +1,7 @@
 """CRUD operations for newsletter subscribers."""
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.crud.base import CRUDBase
@@ -14,10 +14,22 @@ class CRUDSubscriber(CRUDBase[Subscriber, SubscriberCreate, SubscriberUpdate]):
     async def get_by_email(
         self, db: AsyncSession, *, email: str
     ) -> Optional[Subscriber]:
-        """Fetch a subscriber by email address."""
-        result = await db.execute(
-            select(Subscriber).where(Subscriber.email == email)
+        """Fetch a subscriber by email address via parameterized raw SQL."""
+        stmt = (
+            select(Subscriber)
+            .from_statement(
+                text(
+                    """
+                    SELECT id, email, is_active, created_at
+                    FROM subscribers
+                    WHERE email = :email
+                    LIMIT 1
+                    """
+                )
+            )
+            .params(email=email)
         )
+        result = await db.execute(stmt)
         return result.scalars().first()
 
     async def reactivate(

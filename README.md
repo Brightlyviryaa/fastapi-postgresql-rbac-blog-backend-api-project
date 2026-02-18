@@ -49,6 +49,23 @@ The architecture follows modern best practices including **SOLID** principles, s
 | **Auth** | JWT (JSON Web Tokens) |
 | **Environment** | Docker / Python 3.12+ |
 
+# 📋 Feature Checklist
+
+| # | Feature | Status | Notes |
+|---|:---|:---:|:---|
+| 1 | Install & running lokal (uvicorn) | ✅ Ready | See [Running Locally](#-running-locally) section |
+| 2 | Public endpoint | ✅ Done | `/health/`, `/posts`, `/posts/{slug}` (public read) |
+| 3 | Private endpoint (must login) | ✅ Done | `/users/me`, POST `/comments` require auth |
+| 4 | CRUD ke DB pakai ORM | ✅ Done | `CRUDBase` in `app/crud/base.py` |
+| 5 | CRUD ke DB pakai raw SQL | ⚠️ Partial | Implemented for subscriber read in `CRUDSubscriber.get_by_email()` using parameterized raw SQL |
+| 6 | Caching ke Redis | ✅ Done | Cache-aside pattern in `app/core/cache.py` |
+| 7 | Middleware autentikasi & otorisasi | ⚠️ Partial | Auth via `Depends()`, CORS middleware exists |
+| 8 | Upload file | ❌ Missing | Not implemented yet |
+| 9 | Download file | ❌ Missing | Not implemented yet |
+| 10 | Decorator manajemen akses role | ✅ Done | `RoleChecker` dependency in `app/api/dependencies.py` |
+
+**Summary**: 5 ✅ completed, 2 ❌ missing, 3 ⚠️ partial.
+
 # 🏁 Getting Started
 
 ## Prerequisites
