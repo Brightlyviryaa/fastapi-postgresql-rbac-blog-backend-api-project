@@ -1,38 +1,61 @@
 from datetime import datetime
-from typing import Optional
-from pydantic import BaseModel
+from typing import Optional, List
 
-# Shared properties
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.schemas.post import AuthorBrief
+
+
+# ── Base / Create / Update ──────────────────────────────────────────
+
 class CommentBase(BaseModel):
     content: Optional[str] = None
-    is_approved: Optional[bool] = False
 
-# Properties to receive on Comment creation
-class CommentCreate(CommentBase):
-    content: str
-    post_id: int
-    user_id: int
 
-# Properties to receive on Comment update
+class CommentCreate(BaseModel):
+    """Client-facing create schema. post_id and user_id injected server-side."""
+    content: str = Field(..., min_length=1, max_length=5000)
+
+
 class CommentUpdate(CommentBase):
     pass
 
-# Properties shared by models stored in DB
+
+# ── DB / Response schemas ───────────────────────────────────────────
+
 class CommentInDBBase(CommentBase):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     content: str
+    is_approved: bool
     post_id: int
     user_id: int
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
 
-# Properties to return to client
 class Comment(CommentInDBBase):
     pass
 
-# Properties stored in DB
+
 class CommentInDB(CommentInDBBase):
     pass
+
+
+# ── API response schemas ───────────────────────────────────────────
+
+class CommentListItem(BaseModel):
+    """Comment as displayed in list responses."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    content: str
+    user: Optional[AuthorBrief] = None
+    created_at: datetime
+
+
+class CommentListResponse(BaseModel):
+    """Paginated comment list wrapper."""
+    total: int
+    items: List[CommentListItem]

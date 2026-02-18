@@ -4,7 +4,7 @@ from sqlalchemy import String, Text, DateTime, ForeignKey, Integer, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
-from app.db.base import Base
+from app.db.base_class import Base
 
 class Comment(Base):
     __tablename__ = "comments"
@@ -15,7 +15,7 @@ class Comment(Base):
     
     # Foreign Keys
     post_id: Mapped[int] = mapped_column(Integer, ForeignKey("posts.id"))
-    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"))
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("user.id"))
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

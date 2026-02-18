@@ -5,7 +5,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 from pgvector.sqlalchemy import Vector
 
-from app.db.base import Base
+from app.db.base_class import Base
 
 class Post(Base):
     __tablename__ = "posts"
@@ -34,7 +34,7 @@ class Post(Base):
     issue: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # e.g., "Jan 2026"
 
     # Foreign Keys
-    author_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"))
+    author_id: Mapped[int] = mapped_column(Integer, ForeignKey("user.id"))
     category_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("categories.id"), nullable=True)
 
     # Vector Search

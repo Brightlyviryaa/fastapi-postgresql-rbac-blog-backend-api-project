@@ -1,6 +1,6 @@
 from typing import Optional
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr
 
 from app.schemas.role import Role
 
@@ -26,11 +26,10 @@ class UserUpdate(UserBase):
 
 
 class UserInDBBase(UserBase):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     role: Optional[Role] = None
-
-    class Config:
-        from_attributes = True
 
 
 # Additional properties to return via API

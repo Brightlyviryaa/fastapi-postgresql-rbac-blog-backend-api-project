@@ -4,7 +4,7 @@ from sqlalchemy import String, DateTime, Integer, Boolean
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
-from app.db.base import Base
+from app.db.base_class import Base
 
 class Subscriber(Base):
     __tablename__ = "subscribers"
