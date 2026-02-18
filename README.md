@@ -1,6 +1,6 @@
 
 <div align="center">
-  <img src="docs/assets/logo.png" alt="SigmaTechno Logo" width="400" />
+  <img src="docs/assets/logo.jpeg" alt="SigmaTechno Logo" width="400" />
 </div>
 
 <h1 align="center">SigmaTechno</h1>
