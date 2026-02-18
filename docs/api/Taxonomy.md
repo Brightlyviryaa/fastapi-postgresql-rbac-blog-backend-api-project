@@ -50,3 +50,39 @@ Creates a new tag.
 ```json
 { "name": "New Tag", "slug": "new-tag" }
 ```
+
+## Sequence Diagrams
+
+### List Categories
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API
+    participant CRUD
+    participant Database
+
+    Client->>API: GET /categories
+    API->>CRUD: get_multi()
+    CRUD->>Database: Select all Categories + Counts
+    Database-->>CRUD: List[Category]
+    CRUD-->>API: List[Category]
+    API-->>Client: 200 OK
+```
+
+### Create Tag
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API
+    participant Middleware
+    participant Database
+
+    Client->>API: POST /tags (name)
+    API->>Middleware: get_current_user(token)
+    Middleware-->>API: User (Admin/Editor)
+    API->>Database: Insert Tag
+    Database-->>API: Created Tag
+    API-->>Client: 200 OK
+```

@@ -114,3 +114,65 @@ Uploads an image or PDF. Returns the public URL.
   "mime_type": "image/jpeg"
 }
 ```
+
+## Sequence Diagrams
+
+### List Posts
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API
+    participant CRUD
+    participant Database
+
+    Client->>API: GET /posts (params)
+    API->>CRUD: get_multi(skip, limit, filters)
+    CRUD->>Database: Query posts with filters
+    Database-->>CRUD: List[Post]
+    CRUD-->>API: List[Post]
+    API-->>Client: 200 OK (Post List)
+```
+
+### Create Post
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API
+    participant Auth
+    participant CRUD
+    participant Database
+
+    Client->>API: POST /posts (data, token)
+    API->>Auth: get_current_user(token)
+    Auth-->>API: User (Editor/Admin)
+    API->>CRUD: create(data, user_id)
+    CRUD->>Database: Insert Post + Tags/Categories
+    Database-->>CRUD: Created Post
+    CRUD-->>API: Created Post
+    API-->>Client: 200 OK (Post)
+```
+
+### Post Detail
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API
+    participant CRUD
+    participant Database
+
+    Client->>API: GET /posts/{slug}
+    API->>CRUD: get_by_slug(slug)
+    CRUD->>Database: Query post + relations
+    alt Post found
+        Database-->>CRUD: Post
+        CRUD-->>API: Post
+        API-->>Client: 200 OK (Post)
+    else Not found
+        Database-->>CRUD: None
+        CRUD-->>API: None
+        API-->>Client: 404 Not Found
+    end
+```

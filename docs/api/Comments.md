@@ -50,3 +50,39 @@ Approves a comment for display.
 `DELETE /api/v1/comments/{id}`
 
 Deletes a comment.
+
+## Sequence Diagrams
+
+### List Comments
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API
+    participant CRUD
+    participant Database
+
+    Client->>API: GET /posts/{slug}/comments
+    API->>CRUD: get_by_post(slug)
+    CRUD->>Database: Query approved comments
+    Database-->>CRUD: List[Comment]
+    CRUD-->>API: List[Comment]
+    API-->>Client: 200 OK
+```
+
+### Add Comment
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API
+    participant Middleware
+    participant Database
+
+    Client->>API: POST /posts/{slug}/comments (content)
+    API->>Middleware: get_current_user(token)
+    Middleware-->>API: User
+    API->>Database: Insert Comment (is_approved=False)
+    Database-->>API: Created Comment
+    API-->>Client: 200 OK (Comment pending approval)
+```

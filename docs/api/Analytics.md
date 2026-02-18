@@ -47,3 +47,27 @@ Retrieves a table view of posts for the admin console with extended details.
   ]
 }
 ```
+
+## Sequence Diagrams
+
+### Dashboard Stats
+
+```mermaid
+sequenceDiagram
+    participant Admin
+    participant API
+    participant Middleware
+    participant Database
+
+    Admin->>API: GET /dashboard/stats
+    API->>Middleware: check_role('admin')
+    alt Authorized
+        Middleware-->>API: User (Admin)
+        API->>Database: Count Posts (Total, Published, Draft)
+        API->>Database: Count Views
+        Database-->>API: Stats
+        API-->>Admin: 200 OK (Stats)
+    else Unauthorized
+        Middleware-->>Admin: 403 Forbidden
+    end
+```

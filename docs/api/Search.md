@@ -33,3 +33,22 @@ Performs a hybrid search (Semantic + Keyword) across posts.
   ]
 }
 ```
+
+## Sequence Diagrams
+
+### Global Search
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API
+    participant VectorDB
+    participant Database
+
+    Client->>API: GET /search (q='AI', filter='tech')
+    API->>VectorDB: embed_query('AI')
+    VectorDB-->>API: vector[1536]
+    API->>Database: Hybrid Search (Vector + Keyword)
+    Database-->>API: Results (Ranked)
+    API-->>Client: 200 OK (Search Results)
+```
