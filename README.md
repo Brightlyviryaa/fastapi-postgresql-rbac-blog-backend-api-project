@@ -3,8 +3,6 @@
   <img src="docs/assets/logo.jpeg" alt="SigmaTechno Logo" width="400" />
 </div>
 
-<h1 align="center">SigmaTechno</h1>
-
 <p align="center">
   <strong>Modern, High-Performance FastAPI Backend with RBAC</strong>
 </p>
