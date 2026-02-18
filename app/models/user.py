@@ -19,3 +19,5 @@ class User(Base):
     role_id = Column(Integer, ForeignKey("role.id"), nullable=True)
 
     role = relationship("Role", back_populates="users")
+    posts = relationship("Post", back_populates="author")
+    comments = relationship("Comment", back_populates="user")

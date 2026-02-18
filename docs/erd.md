@@ -9,6 +9,8 @@ erDiagram
     Role ||--o{ User : assigned_to
     User ||--o{ Post : writes
     User ||--o{ RefreshToken : has
+    User ||--o{ Comment : writes
+    Post ||--o{ Comment : has
     Post }o--|| Category : belongs_to
     Post }o--o{ Tag : has
 
@@ -47,7 +49,7 @@ erDiagram
         int id PK
         string title
         string slug UK
-        text content
+        text content "Optional if PDF is present"
         string status "draft, published"
         string visibility "public, private"
         datetime scheduled_at
@@ -55,12 +57,35 @@ erDiagram
         string meta_title
         string meta_description
         string canonical_url
-        string pdf_url
+        string pdf_url "Optional if Content is present"
         int author_id FK
         int category_id FK
+        vector embedding "Vector(1536)"
+        int view_count "Analytics"
+        int reading_time "In minutes"
+        text abstract "Short summary/intro"
+        string volume "For Journal e.g. Vol. 24"
+        string issue "For Journal e.g. Jan 2026"
         datetime deleted_at "Soft Delete"
         datetime created_at
         datetime updated_at
+    }
+
+    Comment {
+        int id PK
+        int post_id FK
+        int user_id FK
+        text content
+        boolean is_approved "For moderation"
+        datetime created_at
+        datetime updated_at
+    }
+
+    Subscriber {
+        int id PK
+        string email UK
+        boolean is_active
+        datetime created_at
     }
 
     Category {
