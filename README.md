@@ -117,11 +117,4 @@ If you prefer running without Docker:
 
 We follow strict coding standards to ensure quality and maintainability. Please review our guidelines before contributing:
 
-*   **[`AGENTS.md`](./AGENTS.md)**: Coding rules, architectural principles, and AI interaction guidelines.
-*   **[`GEMINI.md`](./GEMINI.md)**: Project context and detailed tech stack overview.
-
----
-
-<p align="center">
-  Generated with ❤️ by <strong>Antigravity</strong>
-</p>
+*   **Documentation**: Please refer to the [`docs/`](./docs/) directory for detailed architectural principles, coding standards, and API contracts.x
