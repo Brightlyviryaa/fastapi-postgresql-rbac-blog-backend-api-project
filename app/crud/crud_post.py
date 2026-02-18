@@ -1,4 +1,5 @@
 from typing import Any, Dict, List, Optional, Tuple, Union
+from datetime import datetime, timezone
 
 import bleach
 from sqlalchemy import func, select
@@ -10,6 +11,7 @@ from app.models.category import Category
 from app.models.post import Post
 from app.models.tag import Tag
 from app.schemas.post import PostCreate, PostUpdate
+from app.core.embedding import get_embedding
 
 # Allowed HTML tags/attrs for post content sanitization.
 ALLOWED_TAGS = [
@@ -104,10 +106,14 @@ class CRUDPost(CRUDBase[Post, PostCreate, PostUpdate]):
         obj_in: PostCreate,
         author_id: int,
     ) -> Post:
-        """Create a post, sanitize HTML content, and attach tags."""
+        """Create a post, sanitize HTML content, attach tags, and generate embedding."""
         content = sanitize_html(obj_in.content)
         if content and len(content) > MAX_CONTENT_LENGTH:
             raise ValueError("Content exceeds maximum allowed length")
+
+        # Generate embedding
+        text_to_embed = f"{obj_in.title}\n{obj_in.meta_description or ''}\n{content[:1000] if content else ''}"
+        embedding = get_embedding(text_to_embed)
 
         db_obj = Post(
             title=obj_in.title,
@@ -123,6 +129,7 @@ class CRUDPost(CRUDBase[Post, PostCreate, PostUpdate]):
             scheduled_at=obj_in.scheduled_at,
             category_id=obj_in.category_id,
             author_id=author_id,
+            embedding=embedding,
         )
 
         # Attach tags (M2M).
@@ -144,7 +151,7 @@ class CRUDPost(CRUDBase[Post, PostCreate, PostUpdate]):
         db_obj: Post,
         obj_in: Union[PostUpdate, Dict[str, Any]],
     ) -> Post:
-        """Update a post, sanitize content, and sync tags."""
+        """Update a post, sanitize content, sync tags, and regenerate embedding if needed."""
         if isinstance(obj_in, dict):
             update_data = obj_in
             tag_ids = update_data.pop("tag_ids", None)
@@ -157,6 +164,15 @@ class CRUDPost(CRUDBase[Post, PostCreate, PostUpdate]):
             update_data["content"] = sanitize_html(update_data["content"])
             if len(update_data["content"]) > MAX_CONTENT_LENGTH:
                 raise ValueError("Content exceeds maximum allowed length")
+
+        # Regenerate embedding if title or content changes
+        if "title" in update_data or "content" in update_data or "meta_description" in update_data:
+            title = update_data.get("title", db_obj.title)
+            meta_desc = update_data.get("meta_description", db_obj.meta_description)
+            content = update_data.get("content", db_obj.content)
+            
+            text_to_embed = f"{title}\n{meta_desc or ''}\n{content[:1000] if content else ''}"
+            update_data["embedding"] = get_embedding(text_to_embed)
 
         for field, value in update_data.items():
             setattr(db_obj, field, value)
@@ -175,13 +191,65 @@ class CRUDPost(CRUDBase[Post, PostCreate, PostUpdate]):
 
     async def soft_delete(self, db: AsyncSession, *, db_obj: Post) -> Post:
         """Soft-delete a post by setting deleted_at."""
-        from datetime import datetime, timezone
-
         db_obj.deleted_at = datetime.now(timezone.utc)
         db.add(db_obj)
         await db.commit()
         await db.refresh(db_obj)
         return db_obj
+
+    async def search_semantic(
+        self,
+        db: AsyncSession,
+        *,
+        query_text: str,
+        limit: int = 50,
+    ) -> List[Post]:
+        """Search posts using semantic vector similarity."""
+        query_embedding = get_embedding(query_text)
+        if not query_embedding:
+            return []
+
+        # Cosine distance: <=>
+        # We order by distance ASC (closest first)
+        stmt = (
+            select(Post)
+            .where(Post.deleted_at.is_(None), Post.status == "published")
+            .order_by(Post.embedding.cosine_distance(query_embedding))
+            .limit(limit)
+            .options(selectinload(Post.author), selectinload(Post.category))
+        )
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
+
+    async def get_related(
+        self,
+        db: AsyncSession,
+        *,
+        post_id: int,
+        limit: int = 5,
+    ) -> List[Post]:
+        """Get related posts based on embedding similarity."""
+        # First get the source post's embedding
+        source_post = await db.get(Post, post_id)
+        if not source_post or source_post.embedding is None:
+            return []
+
+        stmt = (
+            select(Post)
+            .where(
+                Post.id != post_id,
+                Post.deleted_at.is_(None),
+                Post.status == "published",
+            )
+            # Important: embedding must not be null for distance calc? 
+            # Actually if null, distance might be null.
+            .where(Post.embedding.is_not(None))
+            .order_by(Post.embedding.cosine_distance(source_post.embedding))
+            .limit(limit)
+            .options(selectinload(Post.author), selectinload(Post.category))
+        )
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
 
 
 post = CRUDPost(Post)

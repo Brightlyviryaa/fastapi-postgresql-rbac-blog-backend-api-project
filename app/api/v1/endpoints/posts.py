@@ -102,6 +102,49 @@ async def get_post(
     return response
 
 
+# ── Get Related Posts ───────────────────────────────────────────────
+
+@router.get("/posts/{slug}/related", response_model=schemas.PostListResponse)
+async def get_related_posts(
+    slug: str,
+    limit: int = Query(5, ge=1, le=10),
+    db: AsyncSession = Depends(dependencies.get_db),
+    redis: Redis = Depends(get_redis),
+) -> Any:
+    """Get related posts based on vector similarity."""
+    # Try cache first (although user specific logic usually not cached, but related posts are static-ish)
+    # Cache key: related_posts:{slug}
+    cached = await cache_get(redis, f"related_posts:{slug}")
+    if cached:
+        return schemas.PostListResponse(**json.loads(cached))
+
+    # Get original post to find ID
+    post = await crud.post.get_by_slug(db, slug=slug)
+    if not post:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Post not found",
+        )
+
+    # Get related
+    related_items = await crud.post.get_related(db, post_id=post.id, limit=limit)
+    
+    response = schemas.PostListResponse(
+        total=len(related_items),
+        items=related_items
+    )
+
+    # Cache for a while (e.g. 1 hour)
+    await cache_set(
+        redis,
+        f"related_posts:{slug}",
+        response.model_dump_json(),
+        ttl=3600
+    )
+
+    return response
+
+
 # ── Create Post ─────────────────────────────────────────────────────
 
 @router.post("/posts", response_model=schemas.PostDetail)

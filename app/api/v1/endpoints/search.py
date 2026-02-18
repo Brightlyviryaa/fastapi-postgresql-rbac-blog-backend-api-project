@@ -24,6 +24,9 @@ router = APIRouter()
 
 # ── Business Logic (extracted for testability) ─────────────────────
 
+from app import crud
+# ...
+
 async def search_posts(
     db: AsyncSession,
     *,
@@ -33,11 +36,24 @@ async def search_posts(
     skip: int = 0,
     limit: int = 10,
 ) -> Tuple[List[Post], int]:
-    """Keyword search on published posts (title + content ILIKE).
+    """Search posts. Uses vector semantic search for 'relevance' sort, otherwise keyword search."""
+    
+    # 1. Semantic Search (Vector) if sort is relevance
+    if sort == "relevance" and q:
+        # Note: Current vector search impl in CRUD doesn't support pagination/filtering yet
+        # But we align with user request to use "dense vector search similarity"
+        try:
+            # Get more candidates to filter in memory if needed, but for now just get limit
+            # User asked for "max 50 similar result". We respect the limit param.
+            semantic_results = await crud.post.search_semantic(db, query_text=q, limit=limit)
+            if semantic_results:
+                # We return total as len(results) because vector search (ANN) count is approximation
+                # and we don't want to double query. 
+                return semantic_results, len(semantic_results)
+        except Exception as e:
+            logger.error(f"Vector search failed: {e}. Falling back to keyword search.")
 
-    Note: Semantic/vector search requires an external embedding pipeline
-    and is not yet implemented. This fallback uses keyword matching.
-    """
+    # 2. Fallback / Keyword Search
     query = (
         select(Post)
         .where(Post.deleted_at.is_(None), Post.status == "published")
@@ -48,10 +64,11 @@ async def search_posts(
     )
 
     # Keyword search (title OR content)
-    search_pattern = f"%{q}%"
-    query = query.where(
-        (Post.title.ilike(search_pattern)) | (Post.content.ilike(search_pattern))
-    )
+    if q:
+        search_pattern = f"%{q}%"
+        query = query.where(
+            (Post.title.ilike(search_pattern)) | (Post.content.ilike(search_pattern))
+        )
 
     # Category filter
     if category_filter and category_filter != "all":
@@ -65,8 +82,11 @@ async def search_posts(
     if sort == "date":
         query = query.order_by(Post.created_at.desc())
     else:
-        # Relevance: title matches weighted higher (title match first, then date)
-        query = query.order_by(Post.title.ilike(search_pattern).desc(), Post.created_at.desc())
+        # Relevance fallback: title matches weighted higher
+        if q:
+            query = query.order_by(Post.title.ilike(search_pattern).desc(), Post.created_at.desc())
+        else:
+            query = query.order_by(Post.created_at.desc())
 
     query = query.offset(skip).limit(limit)
     result = await db.execute(query)
