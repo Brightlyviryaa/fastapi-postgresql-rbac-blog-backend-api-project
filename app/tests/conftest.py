@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, AsyncMock
 from app.main import app
 from app.api import dependencies
 from app.db.session import get_db
+from app.core.redis import get_redis
 
 
 class MockAsyncSession:
@@ -61,8 +62,17 @@ def make_mock_user(
     return user
 
 
+async def _mock_get_redis():
+    """Consistent Redis mock for all tests."""
+    client = AsyncMock()
+    client.get = AsyncMock(return_value=None)
+    client.set = AsyncMock()
+    client.incr = AsyncMock(return_value=1)
+    yield client
+
+
 def override_auth(user, role_name: str = "editor"):
-    """Set up FastAPI dependency overrides for auth + DB so tests bypass JWT and DB."""
+    """Set up FastAPI dependency overrides for auth + DB + Redis so tests bypass internals."""
     app.dependency_overrides[dependencies.get_current_user] = lambda: user
     app.dependency_overrides[dependencies.get_current_active_user] = lambda: user
 
@@ -70,11 +80,14 @@ def override_auth(user, role_name: str = "editor"):
         yield MockAsyncSession(role_name=role_name)
 
     app.dependency_overrides[get_db] = mock_get_db
+    app.dependency_overrides[get_redis] = _mock_get_redis
 
 
 def clear_overrides():
-    """Remove all dependency overrides."""
+    """Remove auth/DB overrides but KEEP infrastructure mocks (Redis)."""
     app.dependency_overrides.clear()
+    # Always mock Redis to avoid RuntimeError in unauthenticated tests
+    app.dependency_overrides[get_redis] = _mock_get_redis
 
 
 @pytest.fixture(scope="session")
@@ -84,5 +97,7 @@ def anyio_backend():
 
 @pytest.fixture(scope="module")
 async def client() -> AsyncGenerator[AsyncClient, None]:
+    # Ensure Redis is mocked even at start
+    app.dependency_overrides[get_redis] = _mock_get_redis
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         yield c

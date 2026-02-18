@@ -1,14 +1,19 @@
 """Analytics / Dashboard API endpoints."""
+import json
 import logging
 from typing import Any, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, Query
+from redis.asyncio import Redis
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api import dependencies
 from app.api.dependencies import RoleChecker
+from app.core.cache import cache_get, cache_invalidate, cache_set
+from app.core.config import settings
+from app.core.redis import get_redis
 from app.models.post import Post
 from app.schemas.dashboard import (
     DashboardPostItem,
@@ -96,10 +101,25 @@ async def get_dashboard_posts(
 @router.get("/dashboard/stats", response_model=DashboardStats)
 async def dashboard_stats(
     db: AsyncSession = Depends(dependencies.get_db),
+    redis: Redis = Depends(get_redis),
     current_user=Depends(allow_admin),
 ) -> Any:
     """Retrieve summary statistics for the admin dashboard."""
-    return await get_dashboard_stats(db)
+    # Cache-aside: check cache first
+    cached = await cache_get(redis, "dashboard_stats")
+    if cached:
+        return DashboardStats(**json.loads(cached))
+
+    data = await get_dashboard_stats(db)
+    response = DashboardStats(**data)
+
+    await cache_set(
+        redis,
+        "dashboard_stats",
+        response.model_dump_json(),
+        ttl=settings.CACHE_TTL_DASHBOARD_STATS,
+    )
+    return response
 
 
 @router.get("/dashboard/posts", response_model=DashboardPostListResponse)
@@ -110,9 +130,19 @@ async def dashboard_posts(
     category: Optional[str] = None,
     sort: Optional[str] = None,
     db: AsyncSession = Depends(dependencies.get_db),
+    redis: Redis = Depends(get_redis),
     current_user=Depends(allow_admin),
 ) -> Any:
     """Retrieve admin post table with extended details."""
+    cache_params = dict(
+        skip=skip, limit=limit,
+        status=status_filter or "", category=category or "", sort=sort or "",
+    )
+
+    cached = await cache_get(redis, "dashboard_posts", **cache_params)
+    if cached:
+        return DashboardPostListResponse(**json.loads(cached))
+
     posts, total = await get_dashboard_posts(
         db,
         skip=skip,
@@ -135,4 +165,13 @@ async def dashboard_posts(
         )
         for p in posts
     ]
-    return DashboardPostListResponse(total=total, items=items)
+    response = DashboardPostListResponse(total=total, items=items)
+
+    await cache_set(
+        redis,
+        "dashboard_posts",
+        response.model_dump_json(),
+        ttl=settings.CACHE_TTL_DASHBOARD_POSTS,
+        **cache_params,
+    )
+    return response

@@ -1,13 +1,18 @@
 """Search API endpoint."""
+import json
 import logging
 from typing import Any, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, Query
+from redis.asyncio import Redis
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api import dependencies
+from app.core.cache import cache_get, cache_set
+from app.core.config import settings
+from app.core.redis import get_redis
 from app.models.category import Category
 from app.models.post import Post
 from app.schemas.search import SearchResponse, SearchResultItem
@@ -87,8 +92,21 @@ async def global_search(
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
     db: AsyncSession = Depends(dependencies.get_db),
+    redis: Redis = Depends(get_redis),
 ) -> Any:
     """Perform keyword search across published posts."""
+    # Normalize query for better cache hit rate
+    normalized_q = q.strip().lower()
+
+    cache_params = dict(
+        q=normalized_q, filter=filter or "all",
+        sort=sort, skip=skip, limit=limit,
+    )
+
+    cached = await cache_get(redis, "search", **cache_params)
+    if cached:
+        return SearchResponse(**json.loads(cached))
+
     posts, total = await search_posts(
         db,
         q=q,
@@ -112,4 +130,12 @@ async def global_search(
         )
         for p in posts
     ]
-    return SearchResponse(total=total, items=items)
+    response = SearchResponse(total=total, items=items)
+
+    await cache_set(
+        redis, "search",
+        response.model_dump_json(),
+        ttl=settings.CACHE_TTL_SEARCH,
+        **cache_params,
+    )
+    return response

@@ -51,5 +51,17 @@ class Settings(BaseSettings):
 
     REDIS_URL: str = "redis://localhost:6379/0"
 
+    # Cache TTLs (seconds) — override via env vars if needed
+    CACHE_TTL_DASHBOARD_STATS: int = 60
+    CACHE_TTL_DASHBOARD_POSTS: int = 30
+    CACHE_TTL_SEARCH: int = 60
+    CACHE_TTL_POSTS_LIST: int = 120
+    CACHE_TTL_POST_DETAIL: int = 300
+    CACHE_TTL_COMMENTS: int = 30
+    CACHE_TTL_CATEGORIES: int = 600
+    CACHE_TTL_TAGS: int = 600
+
+    VOYAGE_API_KEY: str
+
 
 settings = Settings()

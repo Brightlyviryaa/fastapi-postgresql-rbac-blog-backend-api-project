@@ -38,7 +38,8 @@ class Post(Base):
     category_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("categories.id"), nullable=True)
 
     # Vector Search
-    embedding: Mapped[Optional[list[float]]] = mapped_column(Vector(1536), nullable=True)
+    embedding: Mapped[Optional[list[float]]] = mapped_column(Vector(1024), nullable=True)
+
 
     # Timestamps & Soft Delete
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

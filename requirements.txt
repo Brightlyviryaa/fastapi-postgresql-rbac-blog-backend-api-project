@@ -17,3 +17,7 @@ email-validator
 pytest
 pytest-asyncio
 httpx
+locust>=2.23.0
+voyageai
+pgvector
+

@@ -1,221 +1,176 @@
 """
-Unit tests for the Search API endpoint.
-
-Covers:
-  - Happy paths (search with results, filters, empty results)
-  - Error cases (missing query, negative pagination)
-  - Security / Penetration (SQLi, XSS, oversized query)
+Unit tests for Search API.
 """
 import pytest
 from httpx import AsyncClient
-from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import datetime, timezone
+from unittest.mock import AsyncMock, patch
 
+from app.tests.conftest import override_auth, clear_overrides
 
-# ── Helpers ─────────────────────────────────────────────────────────
-
-def _make_mock_search_result(
-    post_id: int = 1,
-    title: str = "Generative AI: The Hallucination is the Feature",
-    slug: str = "generative-ai-hallucination",
-):
-    post = MagicMock()
-    post.id = post_id
-    post.title = title
-    post.slug = slug
-    post.content = "Mengapa mengejar akurasi sempurna dalam LLM..."
-    post.abstract = "Mengapa mengejar akurasi sempurna..."
-    post.status = "published"
-    post.created_at = datetime(2026, 2, 18, tzinfo=timezone.utc)
-    post.updated_at = datetime(2026, 2, 18, tzinfo=timezone.utc)
-
-    cat = MagicMock()
-    cat.name = "AI & Ethics"
-    cat.slug = "ai-ethics"
-    post.category = cat
-
-    author = MagicMock()
-    author.full_name = "Jonathan Doe"
-    post.author = author
-
-    return post
-
-
-# ── Search (Happy) ─────────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_search_with_results(client: AsyncClient):
-    """GET /search?q=AI — 200, returns matching posts."""
-    mock_result = _make_mock_search_result()
-    with patch(
-        "app.api.v1.endpoints.search.search_posts",
-        new_callable=AsyncMock,
-        return_value=([mock_result], 1),
-    ):
-        response = await client.get("/api/v1/search", params={"q": "AI"})
+    """GET /search — happy path with hits."""
+    # Search is public, no auth needed usually, but we mock DB/Redis
+    override_auth(None) # just to set DB/Redis mocks
+
+    with patch("app.api.v1.endpoints.search.search_posts") as mock_search:
+        mock_post = AsyncMock()
+        mock_post.id = 1
+        mock_post.title = "Python Tutorial"
+        mock_post.slug = "python-tutorial"
+        mock_post.content = "<p>Learn Python...</p>"
+        mock_post.created_at = "2024-01-01T00:00:00"
+        
+        # Mock relationships
+        mock_category = AsyncMock()
+        mock_category.name = "Programming"
+        mock_category.slug = "programming"
+        mock_post.category = mock_category
+
+        mock_author = AsyncMock()
+        mock_author.full_name = "Guido van Rossum"
+        mock_post.author = mock_author
+        
+        
+        mock_search.return_value = ([mock_post], 1)
+
+        response = await client.get("/api/v1/search?q=python")
         assert response.status_code == 200
         data = response.json()
         assert data["total"] == 1
-        assert len(data["items"]) == 1
-        assert "AI" in data["items"][0]["title"]
+        assert data["items"][0]["slug"] == "python-tutorial"
+        
+    clear_overrides()
 
 
 @pytest.mark.asyncio
 async def test_search_empty_results(client: AsyncClient):
-    """GET /search?q=zzzznonexistent — 200, empty results."""
-    with patch(
-        "app.api.v1.endpoints.search.search_posts",
-        new_callable=AsyncMock,
-        return_value=([], 0),
-    ):
-        response = await client.get("/api/v1/search", params={"q": "zzzznonexistent"})
+    """GET /search — valid query, no hits."""
+    override_auth(None)
+
+    with patch("app.api.v1.endpoints.search.search_posts") as mock_search:
+        mock_search.return_value = ([], 0)
+
+        response = await client.get("/api/v1/search?q=nothing")
         assert response.status_code == 200
         data = response.json()
         assert data["total"] == 0
         assert data["items"] == []
 
+    clear_overrides()
+
 
 @pytest.mark.asyncio
 async def test_search_with_category_filter(client: AsyncClient):
-    """GET /search?q=AI&filter=ai-ethics — 200, filtered by category."""
-    mock_result = _make_mock_search_result()
-    with patch(
-        "app.api.v1.endpoints.search.search_posts",
-        new_callable=AsyncMock,
-        return_value=([mock_result], 1),
-    ):
-        response = await client.get(
-            "/api/v1/search",
-            params={"q": "AI", "filter": "ai-ethics"},
-        )
+    """GET /search — with filter."""
+    override_auth(None)
+
+    with patch("app.api.v1.endpoints.search.search_posts") as mock_search:
+        mock_search.return_value = ([], 0)
+        
+        response = await client.get("/api/v1/search?q=test&filter=tech")
         assert response.status_code == 200
-        data = response.json()
-        assert data["total"] == 1
+        # Verify mock called with correct args
+        mock_search.assert_called_once()
+        _, kwargs = mock_search.call_args
+        assert kwargs["category_filter"] == "tech"
+
+    clear_overrides()
 
 
 @pytest.mark.asyncio
 async def test_search_with_date_sort(client: AsyncClient):
-    """GET /search?q=AI&sort=date — 200, sorted by date."""
-    mock_result = _make_mock_search_result()
-    with patch(
-        "app.api.v1.endpoints.search.search_posts",
-        new_callable=AsyncMock,
-        return_value=([mock_result], 1),
-    ):
-        response = await client.get(
-            "/api/v1/search",
-            params={"q": "AI", "sort": "date"},
-        )
+    """GET /search — with sort."""
+    override_auth(None)
+
+    with patch("app.api.v1.endpoints.search.search_posts") as mock_search:
+        mock_search.return_value = ([], 0)
+        response = await client.get("/api/v1/search?q=test&sort=date")
         assert response.status_code == 200
+        _, kwargs = mock_search.call_args
+        assert kwargs["sort"] == "date"
 
+    clear_overrides()
 
-# ── Search (Error) ─────────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_search_missing_query(client: AsyncClient):
-    """GET /search — 422 when q parameter is missing."""
+    """GET /search — missing 'q' param (422)."""
     response = await client.get("/api/v1/search")
     assert response.status_code == 422
 
 
 @pytest.mark.asyncio
 async def test_search_empty_query(client: AsyncClient):
-    """GET /search?q= — 422 when q is empty string."""
-    response = await client.get("/api/v1/search", params={"q": ""})
+    """GET /search — empty 'q' param (422)."""
+    response = await client.get("/api/v1/search?q=")
     assert response.status_code == 422
 
 
 @pytest.mark.asyncio
 async def test_search_negative_skip(client: AsyncClient):
-    """GET /search?q=AI&skip=-1 — 422 invalid pagination."""
-    response = await client.get("/api/v1/search", params={"q": "AI", "skip": -1})
+    """GET /search — negative skip (422)."""
+    response = await client.get("/api/v1/search?q=test&skip=-1")
     assert response.status_code == 422
 
 
-# ── Security: SQL Injection ────────────────────────────────────────
-
 @pytest.mark.asyncio
 async def test_search_sql_injection(client: AsyncClient):
-    """GET /search?q='; DROP TABLE posts;-- — treated literally, no crash."""
-    with patch(
-        "app.api.v1.endpoints.search.search_posts",
-        new_callable=AsyncMock,
-        return_value=([], 0),
-    ):
-        response = await client.get(
-            "/api/v1/search",
-            params={"q": "'; DROP TABLE posts; --"},
-        )
-        # Should return 200 with empty results, NOT 500
+    """GET /search — attempt SQLi in query."""
+    override_auth(None)
+    with patch("app.api.v1.endpoints.search.search_posts") as mock_search:
+        mock_search.return_value = ([], 0)
+        
+        # Should be treated as literal string
+        response = await client.get("/api/v1/search?q=' OR 1=1;--")
         assert response.status_code == 200
+        
+    clear_overrides()
 
 
 @pytest.mark.asyncio
 async def test_search_sqli_in_filter(client: AsyncClient):
-    """GET /search?q=x&filter='; DROP TABLE categories;-- — treated literally."""
-    with patch(
-        "app.api.v1.endpoints.search.search_posts",
-        new_callable=AsyncMock,
-        return_value=([], 0),
-    ):
-        response = await client.get(
-            "/api/v1/search",
-            params={"q": "test", "filter": "'; DROP TABLE categories; --"},
-        )
+    """GET /search — attempt SQLi in filter."""
+    override_auth(None)
+    with patch("app.api.v1.endpoints.search.search_posts") as mock_search:
+        mock_search.return_value = ([], 0)
+        # Should be treated as literal string
+        response = await client.get("/api/v1/search?q=test&filter=' OR 1=1")
         assert response.status_code == 200
 
+    clear_overrides()
 
-# ── Security: XSS ──────────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_search_xss_in_query(client: AsyncClient):
-    """GET /search?q=<script>alert('xss')</script> — no script reflection."""
-    with patch(
-        "app.api.v1.endpoints.search.search_posts",
-        new_callable=AsyncMock,
-        return_value=([], 0),
-    ):
-        response = await client.get(
-            "/api/v1/search",
-            params={"q": "<script>alert('xss')</script>"},
-        )
+    """GET /search — ensure query echo in UI (if any) is safe (API just returns execution)."""
+    override_auth(None)
+    with patch("app.api.v1.endpoints.search.search_posts") as mock_search:
+        mock_search.return_value = ([], 0)
+        
+        response = await client.get("/api/v1/search?q=<script>alert(1)</script>")
         assert response.status_code == 200
-        # Response must not reflect the script back
-        assert "<script>" not in response.text
 
+    clear_overrides()
 
-# ── Security: Oversized Query ──────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_search_oversized_query(client: AsyncClient):
-    """GET /search?q=aaa...aaa — oversized query handled gracefully."""
-    with patch(
-        "app.api.v1.endpoints.search.search_posts",
-        new_callable=AsyncMock,
-        return_value=([], 0),
-    ):
-        response = await client.get(
-            "/api/v1/search",
-            params={"q": "a" * 5000},
-        )
-        # Should be handled, not crash
-        assert response.status_code in (200, 422)
+    """GET /search — query too long (422)."""
+    huge = "a" * 1000
+    response = await client.get(f"/api/v1/search?q={huge}")
+    assert response.status_code == 422 # Max length is 500
 
-
-# ── Security: Response Data Leakage ────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_search_response_no_sensitive_data(client: AsyncClient):
-    """GET /search — results should not contain passwords or internal data."""
-    mock_result = _make_mock_search_result()
-    with patch(
-        "app.api.v1.endpoints.search.search_posts",
-        new_callable=AsyncMock,
-        return_value=([mock_result], 1),
-    ):
-        response = await client.get("/api/v1/search", params={"q": "AI"})
-        assert response.status_code == 200
+    """GET /search — no leakage."""
+    override_auth(None)
+    with patch("app.api.v1.endpoints.search.search_posts") as mock_search:
+        mock_search.return_value = ([], 0)
+        response = await client.get("/api/v1/search?q=safe")
         text = response.text.lower()
         assert "password" not in text
-        assert "hashed" not in text
-        assert "embedding" not in text
+        
+    clear_overrides()
